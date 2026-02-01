@@ -1,5 +1,7 @@
-import RequirementList from '@/components/RequirementList';
+'use client';
+
+import PrdList from '@/components/PrdList';
 
 export default function Page() {
-  return <RequirementList />;
+  return <PrdList />;
 }

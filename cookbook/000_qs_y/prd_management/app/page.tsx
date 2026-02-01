@@ -1,5 +1,7 @@
-import ChatWorkspace from '@/components/ChatWorkspace';
+'use client';
+
+import DocWorkspace from '@/components/DocWorkspace';
 
 export default function Page() {
-  return <ChatWorkspace />;
+  return <DocWorkspace />;
 }

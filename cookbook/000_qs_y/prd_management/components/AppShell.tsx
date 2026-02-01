@@ -1,13 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import { ClipboardList, MessageCircle } from 'lucide-react';
+import { ClipboardList, FileText } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface AppShellProps {
   title: string;
   description?: string;
-  active: 'chat' | 'list';
+  active: 'docs' | 'list';
   badges?: React.ReactNode;
   side?: React.ReactNode;
   footer?: React.ReactNode;
@@ -16,8 +16,8 @@ interface AppShellProps {
 }
 
 const navItems = [
-  { key: 'chat', label: '聊需求', href: '/', icon: MessageCircle },
-  { key: 'list', label: '需求列表', href: '/list', icon: ClipboardList },
+  { key: 'docs', label: '文档总结', href: '/', icon: FileText },
+  { key: 'list', label: 'PRD 列表', href: '/list', icon: ClipboardList },
 ] as const;
 
 export default function AppShell({
@@ -48,12 +48,8 @@ export default function AppShell({
       <div className={innerClassName}>
         <aside className="hidden min-h-0 w-56 flex-col gap-6 rounded-2xl border border-slate-200/70 bg-white/80 p-5 shadow-sm dark:border-slate-800/80 dark:bg-slate-900/70 md:flex">
           <div className="space-y-2">
-            <div className="text-xs uppercase tracking-[0.2em] text-slate-400">
-              PRD Studio
-            </div>
-            <div className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-              需求助手
-            </div>
+            <div className="text-xs uppercase tracking-[0.2em] text-slate-400">Doc Summary</div>
+            <div className="text-lg font-semibold text-slate-900 dark:text-slate-100">文档总结</div>
           </div>
           <nav className="space-y-2">
             {navItems.map((item) => {
@@ -76,21 +72,15 @@ export default function AppShell({
               );
             })}
           </nav>
-          <div className="mt-auto space-y-3 text-xs text-slate-500 dark:text-slate-400">
-            {footer}
-          </div>
+          <div className="mt-auto space-y-3 text-xs text-slate-500 dark:text-slate-400">{footer}</div>
         </aside>
 
         <main className={mainClassName}>
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50">
-                {title}
-              </h1>
+              <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50">{title}</h1>
               {description && (
-                <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-                  {description}
-                </p>
+                <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">{description}</p>
               )}
             </div>
             {badges && <div className="flex flex-wrap items-center gap-2">{badges}</div>}
@@ -104,10 +94,10 @@ export default function AppShell({
               )}
             >
               <div>{side}</div>
-              <div className={lockViewport ? 'min-h-0' : undefined}>{children}</div>
+              <div className={lockViewport ? 'min-h-0 h-full' : undefined}>{children}</div>
             </div>
           ) : (
-            <div className={lockViewport ? 'flex-1 min-h-0' : undefined}>{children}</div>
+            <div className={lockViewport ? 'flex-1 min-h-0 h-full' : undefined}>{children}</div>
           )}
         </main>
       </div>
