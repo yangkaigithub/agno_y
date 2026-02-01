@@ -39,6 +39,7 @@ Learn More
 from pathlib import Path
 
 from agent_search_over_knowledge import agent_with_knowledge
+# from agent_agno_docs_assistant import agno_docs_assistant
 from agent_with_guardrails import agent_with_guardrails
 from agent_with_memory import agent_with_memory
 from agent_with_state_management import agent_with_state_management
@@ -66,6 +67,7 @@ agent_os = AgentOS(
         agent_with_tools,
         agent_with_storage,
         agent_with_knowledge,
+        # agno_docs_assistant,
         self_learning_agent,
         agent_with_structured_output,
         agent_with_typed_input_output,

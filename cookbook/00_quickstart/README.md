@@ -15,11 +15,12 @@ Each example can be run independently and contains detailed comments to help you
 | 05 | `agent_with_memory.py` | Remember user preferences across sessions | Memory Manager, Personalization |
 | 06 | `agent_with_state_management.py` | Track, modify, and persist structured state | Session State, State Management |
 | 07 | `agent_search_over_knowledge.py` | Load documents into a knowledge base and search with hybrid search | Chunking, Embedding, Hybrid Search, Agentic Retrieval |
-| 08 | `custom_tool_for_self_learning.py` | How to write your own tools and add self-learning capabilities | Custom Tools, Self-Learning |
-| 09 | `agent_with_guardrails.py` | Add input validation and safety checks | Guardrails, PII Detection, Prompt Injection |
-| 10 | `human_in_the_loop.py` | Require user confirmation before executing tools | Human in the Loop, Tool Confirmation |
-| 11 | `multi_agent_team.py` | Coordinate multiple agents by organizing them into a team | Multi-Agent Team, Dynamic Collaboration |
-| 12 | `sequential_workflow.py` | Sequentially execute agents/teams/functions | Agentic Workflow, Pipelines |
+| 08 | `agent_agno_docs_assistant.py` | Ask questions over the official docs bundle `llms-full.txt` | Custom Tool Search, Docs Q&A |
+| 09 | `custom_tool_for_self_learning.py` | How to write your own tools and add self-learning capabilities | Custom Tools, Self-Learning |
+| 10 | `agent_with_guardrails.py` | Add input validation and safety checks | Guardrails, PII Detection, Prompt Injection |
+| 11 | `human_in_the_loop.py` | Require user confirmation before executing tools | Human in the Loop, Tool Confirmation |
+| 12 | `multi_agent_team.py` | Coordinate multiple agents by organizing them into a team | Multi-Agent Team, Dynamic Collaboration |
+| 13 | `sequential_workflow.py` | Sequentially execute agents/teams/functions | Agentic Workflow, Pipelines |
 
 ## Key Concepts
 
@@ -92,6 +93,9 @@ https://github.com/user-attachments/assets/aae0086b-86f6-4939-a0ce-e1ec9b87ba1f
 > ```bash
 > python cookbook/00_quickstart/agent_search_over_knowledge.py
 > ```
+
+> [!TIP]
+> `agent_agno_docs_assistant.py` will auto-download `https://docs.agno.com/llms-full.txt` into `cookbook/00_quickstart/tmp/` on first run.
 
 ## Swap Models Anytime
 
