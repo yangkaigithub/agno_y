@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Children, cloneElement, isValidElement, useEffect, useMemo, useRef, useState } from 'react';
 import { FileDown, FileUp, Loader2, Mic, MicOff, Plus, RotateCcw } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -15,37 +15,87 @@ import { cn } from '@/lib/utils';
 function highlightClarification(nodes: React.ReactNode): React.ReactNode {
   const token = '【待澄清】';
 
+  const pattern = /【待澄清[^】]*】/g;
+
   const walk = (node: React.ReactNode): React.ReactNode => {
     if (typeof node === 'string') {
-      if (!node.includes(token)) return node;
-      const parts = node.split(token);
+      const matches = [...node.matchAll(pattern)];
+      if (matches.length === 0) return node;
+
       const out: React.ReactNode[] = [];
-      parts.forEach((part, index) => {
-        if (part) out.push(part);
-        if (index < parts.length - 1) {
-          out.push(
-            <span key={`clarify-${index}`} className="font-semibold text-red-600 dark:text-red-400">
-              {token}
-            </span>
-          );
-        }
+      let lastIndex = 0;
+      matches.forEach((match, index) => {
+        const start = match.index ?? 0;
+        const value = match[0] ?? '';
+        if (start > lastIndex) out.push(node.slice(lastIndex, start));
+        out.push(
+          <span key={`clarify-${index}-${start}`} className="font-semibold text-red-600 dark:text-red-400">
+            {value}
+          </span>
+        );
+        lastIndex = start + value.length;
       });
-      return out;
+      if (lastIndex < node.length) out.push(node.slice(lastIndex));
+      return out.length === 1 ? out[0] : out;
     }
 
     if (Array.isArray(node)) return node.map(walk);
 
-    if (node && typeof node === 'object' && 'props' in (node as any)) {
+    if (isValidElement(node)) {
       const element = node as any;
       const children = element.props?.children;
       if (children == null) return node;
-      return { ...element, props: { ...element.props, children: walk(children) } };
+      return cloneElement(element, { ...element.props }, walk(children));
     }
 
     return node;
   };
 
-  return walk(nodes);
+  return Children.map(nodes, walk);
+}
+
+function stripHtml(text: string) {
+  return (text || '')
+    .replace(/<br\s*\/?\s*>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .trim();
+}
+
+function normalizePrdMarkdown(input: string) {
+  if (!input) return '';
+
+  let out = input;
+
+  // Backward compatibility for older PRD outputs that used HTML.
+  out = out.replace(/<span[^>]*color\s*:\s*red[^>]*>/gi, '').replace(/<\/span>/gi, '');
+
+  out = out.replace(/<table[\s\S]*?<\/table>/gi, (table) => {
+    const rows = [...table.matchAll(/<tr[\s\S]*?<\/tr>/gi)].map((m) => m[0]);
+    const parsed = rows
+      .map((row) => {
+        const cells = [...row.matchAll(/<(t[hd])[^>]*>([\s\S]*?)<\/t[hd]>/gi)].map((m) => stripHtml(m[2]));
+        return cells;
+      })
+      .filter((cells) => cells.length > 0);
+
+    if (parsed.length === 0) return stripHtml(table);
+
+    const header = parsed[0];
+    const body = parsed.slice(1);
+    const sep = header.map(() => '---');
+    const lines = [
+      `| ${header.join(' | ')} |`,
+      `| ${sep.join(' | ')} |`,
+      ...body.map((r) => `| ${r.join(' | ')} |`),
+    ];
+    return `\n\n${lines.join('\n')}\n\n`;
+  });
+
+  return out;
 }
 
 type DocStatus = {
@@ -116,6 +166,7 @@ export default function DocWorkspace() {
   const [status, setStatus] = useState<DocStatus | null>(null);
   const [summaries, setSummaries] = useState<DocSummaryItem[]>([]);
   const [prd, setPrd] = useState('');
+  const prdMarkdown = useMemo(() => normalizePrdMarkdown(prd), [prd]);
   const [sessions, setSessions] = useState<PrdRecord[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -673,7 +724,7 @@ export default function DocWorkspace() {
                     li: ({ children }) => <li>{highlightClarification(children)}</li>,
                   }}
                 >
-                  {prd}
+                  {prdMarkdown}
                 </ReactMarkdown>
               </div>
             ) : (
