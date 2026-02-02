@@ -6,8 +6,8 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-body);
+  --font-mono: var(--font-code);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -121,7 +121,94 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-family: var(--font-sans);
   }
+}
+
+.font-display {
+  font-family: var(--font-display), var(--font-sans);
+  letter-spacing: -0.01em;
+}
+
+.shell-surface {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(1200px 600px at -10% -20%, rgba(16, 185, 129, 0.18), transparent 60%),
+    radial-gradient(900px 500px at 110% 0%, rgba(251, 191, 36, 0.2), transparent 55%),
+    linear-gradient(180deg, #fbfaf7 0%, #f2efe8 100%);
+}
+
+.dark .shell-surface {
+  background:
+    radial-gradient(1000px 500px at -10% -20%, rgba(16, 185, 129, 0.18), transparent 60%),
+    radial-gradient(800px 450px at 110% 0%, rgba(251, 191, 36, 0.16), transparent 55%),
+    linear-gradient(180deg, #0b1220 0%, #0a0f1a 100%);
+}
+
+.shell-surface::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(15, 23, 42, 0.08) 1px, transparent 0);
+  background-size: 24px 24px;
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.dark .shell-surface::after {
+  opacity: 0.2;
+}
+
+.card-surface {
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: rgba(255, 255, 255, 0.74);
+  box-shadow: 0 24px 60px -48px rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(16px);
+}
+
+.dark .card-surface {
+  border-color: rgba(148, 163, 184, 0.2);
+  background: rgba(15, 23, 42, 0.6);
+  box-shadow: 0 24px 60px -48px rgba(15, 23, 42, 0.9);
+}
+
+@keyframes ui-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.ui-reveal {
+  animation: ui-rise 0.6s ease both;
+}
+
+.ui-reveal-delay-1 {
+  animation-delay: 120ms;
+}
+
+.ui-reveal-delay-2 {
+  animation-delay: 240ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-reveal,
+  .ui-reveal-delay-1,
+  .ui-reveal-delay-2 {
+    animation: none;
+  }
+}
+
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 /* Markdown 预览样式 */
@@ -131,14 +218,17 @@
 
 .prose h1 {
   @apply text-3xl font-bold mt-8 mb-4 text-slate-900 dark:text-slate-50;
+  font-family: var(--font-display), var(--font-sans);
 }
 
 .prose h2 {
   @apply text-2xl font-semibold mt-6 mb-3 text-slate-900 dark:text-slate-50;
+  font-family: var(--font-display), var(--font-sans);
 }
 
 .prose h3 {
   @apply text-xl font-semibold mt-4 mb-2 text-slate-900 dark:text-slate-50;
+  font-family: var(--font-display), var(--font-sans);
 }
 
 .prose p {

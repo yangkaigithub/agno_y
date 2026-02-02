@@ -5,7 +5,7 @@ import { Download, ExternalLink, Loader2, RefreshCw } from 'lucide-react';
 import AppShell from '@/components/AppShell';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 
 type PrdRecord = {
@@ -45,6 +45,8 @@ export default function PrdList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
+  const panelClass =
+    'card-surface rounded-3xl border border-white/60 shadow-[0_18px_60px_-45px_rgba(15,23,42,0.5)]';
 
   async function loadItems() {
     setLoading(true);
@@ -72,55 +74,41 @@ export default function PrdList() {
   const badges = useMemo(
     () => (
       <>
-        <Badge variant="secondary">PRD：{items.length}</Badge>
-        <Badge variant="outline">接口：/api/prd/list</Badge>
+        <Badge variant="secondary">{items.length}</Badge>
+        <Badge variant="outline" className="uppercase text-[10px] tracking-wider">
+          list
+        </Badge>
       </>
     ),
     [items.length]
   );
 
   const sidePanel = (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">概览</CardTitle>
-        <CardDescription>查看生成的 PRD 文档记录（可下载）</CardDescription>
+    <Card className={cn(panelClass, 'ui-reveal')}>
+      <CardHeader className="pb-2">
+        <CardTitle className="font-display text-lg text-slate-900 dark:text-slate-50">概览</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3 text-sm text-slate-600 dark:text-slate-300">
-        <div className="rounded-lg border border-slate-200/70 bg-slate-50/80 p-3 dark:border-slate-800/70 dark:bg-slate-950/70">
-          {items.length === 0 ? '暂无 PRD' : `共 ${items.length} 份 PRD`}
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between">
+          <span className="text-xs uppercase tracking-[0.3em] text-slate-400">PRD</span>
+          <span className="text-2xl font-semibold text-slate-900 dark:text-slate-50">{items.length}</span>
         </div>
-        <div className="text-xs text-slate-500 dark:text-slate-400">接口：{LIST_API_URL}</div>
-        <Button variant="outline" size="sm" className="w-full gap-2" onClick={loadItems}>
+        <div className="text-xs text-slate-500 dark:text-slate-400">
+          更新 {lastUpdated ? new Date(lastUpdated).toLocaleTimeString('zh-CN') : '-'}
+        </div>
+        <Button variant="outline" size="sm" className="w-full gap-2 rounded-2xl" onClick={loadItems}>
           <RefreshCw className="h-4 w-4" />
-          刷新列表
+          刷新
         </Button>
       </CardContent>
     </Card>
   );
 
-  const footer = (
-    <>
-      <div>更新时间：{lastUpdated ? new Date(lastUpdated).toLocaleTimeString('zh-CN') : '-'}</div>
-      <Button variant="outline" size="sm" className="w-full gap-2" onClick={loadItems}>
-        <RefreshCw className="h-4 w-4" />
-        重新加载
-      </Button>
-    </>
-  );
-
   return (
-    <AppShell
-      title="PRD 列表"
-      description="文档上传后会逐段更新 PRD（累计），并保存为可下载的 PRD 文件。"
-      active="list"
-      badges={badges}
-      side={sidePanel}
-      footer={footer}
-    >
-      <Card>
+    <AppShell title="PRD 列表" description="全部 PRD" active="list" badges={badges} side={sidePanel}>
+      <Card className={cn(panelClass, 'ui-reveal ui-reveal-delay-1')}>
         <CardHeader>
-          <CardTitle>最近 PRD</CardTitle>
-          <CardDescription>按更新时间排序</CardDescription>
+          <CardTitle className="font-display text-lg">最近</CardTitle>
         </CardHeader>
         <CardContent>
           {loading && (
@@ -135,15 +123,15 @@ export default function PrdList() {
             </div>
           )}
           {!loading && !error && items.length === 0 && (
-            <div className="text-sm text-slate-500">暂无 PRD</div>
+            <div className="text-sm text-slate-500">暂无</div>
           )}
           {!loading && !error && items.length > 0 && (
-            <div className="space-y-3">
+            <div className="space-y-4">
               {items.map((item) => (
                 <div
                   key={item.id}
                   className={cn(
-                    'rounded-xl border border-slate-200/70 bg-white/70 p-4 shadow-sm dark:border-slate-800/70 dark:bg-slate-900/60'
+                    'card-surface rounded-2xl p-4 text-slate-700 dark:text-slate-200'
                   )}
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
@@ -151,15 +139,17 @@ export default function PrdList() {
                       <div className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
                         {item.title || `PRD-${item.session_id}`}
                       </div>
-                      <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                        id={item.id} · session_id={item.session_id} · v{item.version} · {item.status}
+                      <div className="mt-1 flex flex-wrap gap-2 text-xs text-slate-500 dark:text-slate-400">
+                        <span className="font-mono">{item.session_id.slice(0, 8)}</span>
+                        <span>v{item.version}</span>
+                        <span>{item.status}</span>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <Button
                         size="sm"
                         variant="outline"
-                        className="gap-2"
+                        className="gap-2 rounded-2xl"
                         onClick={() => {
                           window.localStorage.setItem(STORAGE_SESSION_ID, item.session_id);
                           window.localStorage.removeItem(STORAGE_TASK_ID);
@@ -173,7 +163,7 @@ export default function PrdList() {
                       <Button
                         size="sm"
                         variant="outline"
-                        className="gap-2"
+                        className="gap-2 rounded-2xl"
                         onClick={() => window.open(`${DOWNLOAD_BASE_URL}/${item.id}`, '_blank')}
                       >
                         <Download className="h-4 w-4" />
@@ -182,7 +172,7 @@ export default function PrdList() {
                     </div>
                   </div>
                   {item.summary && (
-                    <div className="mt-3 rounded-lg border border-slate-200/70 bg-white/70 p-3 text-xs text-slate-700 dark:border-slate-800/70 dark:bg-slate-950/30 dark:text-slate-200">
+                    <div className="mt-3 rounded-2xl border border-slate-200/70 bg-white/60 p-3 text-xs text-slate-700 dark:border-slate-800/70 dark:bg-slate-950/40 dark:text-slate-200 line-clamp-3">
                       {item.summary}
                     </div>
                   )}

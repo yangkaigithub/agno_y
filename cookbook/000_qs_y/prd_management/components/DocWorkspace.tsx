@@ -1,4 +1,4 @@
-'use client';
+﻿﻿﻿'use client';
 
 import { Children, cloneElement, isValidElement, useEffect, useMemo, useRef, useState } from 'react';
 import { FileDown, FileUp, Loader2, Mic, MicOff, Plus, RotateCcw } from 'lucide-react';
@@ -7,8 +7,7 @@ import remarkGfm from 'remark-gfm';
 import AppShell from '@/components/AppShell';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 
@@ -178,6 +177,7 @@ export default function DocWorkspace() {
   const [voiceHistory, setVoiceHistory] = useState('');
   const flushTimerRef = useRef<number | null>(null);
   const refineTimerRef = useRef<number | null>(null);
+  const autoRestartRef = useRef(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -297,10 +297,18 @@ export default function DocWorkspace() {
     };
   }, [sessionId]);
 
-  const speechSupported = useMemo(() => {
-    if (typeof window === 'undefined') return false;
-    return Boolean((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
+  const [speechSupported, setSpeechSupported] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const supported = Boolean((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
+    setSpeechSupported(supported);
   }, []);
+
+  const panelClass =
+    'card-surface rounded-3xl border border-white/60 shadow-[0_18px_60px_-45px_rgba(15,23,42,0.5)]';
+  const chipClass =
+    'rounded-full border border-slate-200/70 bg-white/70 px-2 py-1 text-[11px] font-mono text-slate-600 shadow-sm dark:border-slate-700/50 dark:bg-slate-900/60 dark:text-slate-200';
 
   const badges = useMemo(() => {
     const total = status?.total_chunks ?? 0;
@@ -308,8 +316,10 @@ export default function DocWorkspace() {
     const state = status?.status ?? 'idle';
     return (
       <>
-        <Badge variant="secondary">分段：{done}/{total}</Badge>
-        <Badge variant="outline">状态：{state}</Badge>
+        <Badge variant="secondary">{done}/{total}</Badge>
+        <Badge variant="outline" className="uppercase text-[10px] tracking-wider">
+          {state}
+        </Badge>
       </>
     );
   }, [status?.completed_chunks, status?.status, status?.total_chunks]);
@@ -397,13 +407,29 @@ export default function DocWorkspace() {
     setVoiceError(null);
   }
 
+  function ensureSessionId() {
+    if (sessionId) return sessionId;
+    const id = createSessionId();
+    window.localStorage.setItem(STORAGE_SESSION_ID, id);
+    window.localStorage.removeItem(STORAGE_TASK_ID);
+    window.localStorage.removeItem(STORAGE_FILENAME);
+    setSessionId(id);
+    setTaskId(null);
+    setFilename(null);
+    setStatus(null);
+    setSummaries([]);
+    setPrd('');
+    setError(null);
+    return id;
+  }
+
   async function flushVoiceWindow() {
-    if (!sessionId) return;
+    const activeSessionId = sessionId ?? ensureSessionId();
     const textToSend = (voiceRefined || voiceRaw).trim();
     if (!textToSend) return;
     try {
       const form = new FormData();
-      form.append('session_id', sessionId);
+      form.append('session_id', activeSessionId);
       form.append('text', textToSend);
       form.append('chunk_size', '500');
       const res = await fetch(VOICE_APPEND_URL, { method: 'POST', body: form });
@@ -446,20 +472,35 @@ export default function DocWorkspace() {
   }
 
   function startMic() {
-    if (!speechSupported) {
-      setVoiceError('当前浏览器不支持语音识别（SpeechRecognition）');
-      return;
-    }
-    if (!sessionId) {
-      setVoiceError('请先选择或新建 session');
-      return;
-    }
-    setVoiceError(null);
+    if (recognitionRef.current) return;
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) {
+      setSpeechSupported(false);
+      setVoiceError('不支持语音识别');
+      return;
+    }
+    const host = typeof window !== 'undefined' ? window.location.hostname : '';
+    const secure =
+      typeof window !== 'undefined' &&
+      (window.isSecureContext || host === 'localhost' || host === '127.0.0.1');
+    if (!secure) {
+      setVoiceError('需 https 或 localhost');
+      return;
+    }
+    ensureSessionId();
+    setVoiceError(null);
     const rec = new SR();
+    recognitionRef.current = rec;
+    autoRestartRef.current = true;
     rec.continuous = true;
     rec.interimResults = true;
     rec.lang = 'zh-CN';
+
+    rec.onstart = () => {
+      setIsMicOn(true);
+      if (flushTimerRef.current) window.clearInterval(flushTimerRef.current);
+      flushTimerRef.current = window.setInterval(() => void flushVoiceWindow(), 120000);
+    };
 
     rec.onresult = (event: any) => {
       let appended = '';
@@ -476,33 +517,49 @@ export default function DocWorkspace() {
     };
 
     rec.onerror = (event: any) => {
+      autoRestartRef.current = false;
       setVoiceError(event?.error ? String(event.error) : '语音识别错误');
       setIsMicOn(false);
+      if (flushTimerRef.current) {
+        window.clearInterval(flushTimerRef.current);
+        flushTimerRef.current = null;
+      }
+      try {
+        rec.stop();
+      } catch {
+        // ignore
+      }
+      recognitionRef.current = null;
     };
 
     rec.onend = () => {
-      // Some browsers stop automatically; restart unless the user stopped it.
-      if (recognitionRef.current === rec && flushTimerRef.current) {
-        try {
-          rec.start();
-        } catch {
-          // ignore
-        }
+      if (recognitionRef.current !== rec) return;
+      if (!autoRestartRef.current) {
+        setIsMicOn(false);
+        return;
+      }
+      try {
+        rec.start();
+      } catch (e) {
+        autoRestartRef.current = false;
+        recognitionRef.current = null;
+        setIsMicOn(false);
+        setVoiceError(e instanceof Error ? e.message : '语音已停止');
       }
     };
 
     try {
       rec.start();
-      recognitionRef.current = rec;
-      setIsMicOn(true);
-      if (flushTimerRef.current) window.clearInterval(flushTimerRef.current);
-      flushTimerRef.current = window.setInterval(() => void flushVoiceWindow(), 120000);
     } catch (e) {
+      autoRestartRef.current = false;
+      recognitionRef.current = null;
+      setIsMicOn(false);
       setVoiceError(e instanceof Error ? e.message : '无法启动麦克风');
     }
   }
 
   async function stopMic() {
+    autoRestartRef.current = false;
     setIsMicOn(false);
     if (flushTimerRef.current) {
       window.clearInterval(flushTimerRef.current);
@@ -531,6 +588,7 @@ export default function DocWorkspace() {
 
   useEffect(() => {
     return () => {
+      autoRestartRef.current = false;
       if (flushTimerRef.current) window.clearInterval(flushTimerRef.current);
       if (refineTimerRef.current) window.clearTimeout(refineTimerRef.current);
       try {
@@ -543,30 +601,30 @@ export default function DocWorkspace() {
   }, []);
 
   const sidePanel = (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">文档上传</CardTitle>
-        <CardDescription>上传后立即启动分段总结（文件 chunk_size=2000；语音 chunk_size=500）</CardDescription>
+    <Card className={cn(panelClass, 'ui-reveal')}>
+      <CardHeader className="pb-2">
+        <CardTitle className="font-display text-lg text-slate-900 dark:text-slate-50">控制台</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-4">
         <div className="space-y-2">
-          <Label>选择 session</Label>
           <select
-            className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-50"
+            aria-label="Session"
+            className="w-full rounded-2xl border border-slate-200/70 bg-white/70 px-3 py-2 text-sm text-slate-900 shadow-sm backdrop-blur transition focus:outline-none focus:ring-2 focus:ring-emerald-200/60 dark:border-slate-800/70 dark:bg-slate-900/70 dark:text-slate-50"
             value={sessionId ?? ''}
             onChange={(event) => void selectSession(event.target.value)}
           >
             <option value="" disabled>
-              请选择或点击“新建session”
+              选择会话
             </option>
             {sessions.map((s) => (
               <option key={s.session_id} value={s.session_id}>
-                {(s.title || `PRD-${s.session_id}`).slice(0, 40)} · {s.session_id.slice(0, 8)}
+                {(s.title || `PRD-${s.session_id}`).slice(0, 32)} · {s.session_id.slice(0, 8)}
               </option>
             ))}
           </select>
-          <div className="text-xs text-slate-500 dark:text-slate-400">
-            当前 session：{sessionId ?? '-'}
+          <div className="flex flex-wrap gap-2">
+            <span className={chipClass}>{sessionId ? sessionId.slice(0, 12) : '-'}</span>
+            {filename && <span className={cn(chipClass, 'max-w-[180px] truncate')}>{filename}</span>}
           </div>
         </div>
 
@@ -581,118 +639,121 @@ export default function DocWorkspace() {
             event.target.value = '';
           }}
         />
-        <Button
-          className="w-full gap-2"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={isUploading}
-        >
-          {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileUp className="h-4 w-4" />}
-          选择文件并上传
-        </Button>
-
-        <div className="rounded-lg border border-slate-200/70 bg-slate-50/80 p-3 text-sm text-slate-600 dark:border-slate-800/70 dark:bg-slate-950/70 dark:text-slate-300">
-          <div className="font-medium text-slate-800 dark:text-slate-100">当前任务</div>
-          <div className="mt-2 space-y-1 text-xs">
-            <div>task_id：{taskId ?? '-'}</div>
-            <div>session_id：{sessionId ?? '-'}</div>
-            <div>文件：{filename ?? '-'}</div>
-            <div>更新时间：{status?.updated_at ? formatDateTime(status.updated_at) : '-'}</div>
+        <div className="grid gap-2">
+          <Button
+            className="w-full gap-2 rounded-2xl bg-slate-900 text-white shadow-sm hover:bg-slate-800"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isUploading}
+          >
+            {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileUp className="h-4 w-4" />}
+            上传文档
+          </Button>
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2 rounded-2xl"
+              onClick={() => {
+                if (!sessionId || !filename) return;
+                window.open(
+                  `${DOWNLOAD_ORIGINAL_URL}?session_id=${encodeURIComponent(sessionId)}&filename=${encodeURIComponent(
+                    filename
+                  )}`,
+                  '_blank'
+                );
+              }}
+              disabled={!sessionId || !filename}
+            >
+              <FileDown className="h-4 w-4" />
+              原文
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2 rounded-2xl"
+              onClick={() => {
+                if (!sessionId) return;
+                window.open(`${DOWNLOAD_CUMULATIVE_URL}?session_id=${encodeURIComponent(sessionId)}`, '_blank');
+              }}
+              disabled={!sessionId}
+            >
+              <FileDown className="h-4 w-4" />
+              PRD
+            </Button>
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="flex-1 gap-2"
-            onClick={() => {
-              if (!sessionId || !filename) return;
-              window.open(
-                `${DOWNLOAD_ORIGINAL_URL}?session_id=${encodeURIComponent(sessionId)}&filename=${encodeURIComponent(
-                  filename
-                )}`,
-                '_blank'
-              );
-            }}
-            disabled={!sessionId || !filename}
-          >
-            <FileDown className="h-4 w-4" />
-            原文
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" className="flex-1 gap-2 rounded-2xl" onClick={newSession}>
+            <Plus className="h-4 w-4" />
+            新建
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="flex-1 gap-2"
-            onClick={() => {
-              if (!sessionId) return;
-              window.open(`${DOWNLOAD_CUMULATIVE_URL}?session_id=${encodeURIComponent(sessionId)}`, '_blank');
-            }}
-            disabled={!sessionId}
-          >
-            <FileDown className="h-4 w-4" />
-            累计总结
+          <Button variant="outline" size="sm" className="flex-1 gap-2 rounded-2xl" onClick={reset}>
+            <RotateCcw className="h-4 w-4" />
+            重置
           </Button>
         </div>
 
-        <Button variant="outline" size="sm" className="w-full gap-2" onClick={reset}>
-          <RotateCcw className="h-4 w-4" />
-          重置
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <span className={chipClass}>task {taskId ?? '-'}</span>
+          <span className={chipClass}>{status?.status ?? 'idle'}</span>
+        </div>
 
-        <Button variant="outline" size="sm" className="w-full gap-2" onClick={newSession}>
-          <Plus className="h-4 w-4" />
-          新建session
-        </Button>
-
-        <div className="rounded-xl border border-slate-200/70 bg-white/70 p-3 shadow-sm dark:border-slate-800/70 dark:bg-slate-900/60">
+        <div className="rounded-2xl border border-slate-200/70 bg-white/70 p-3 shadow-sm backdrop-blur dark:border-slate-800/70 dark:bg-slate-900/60">
           <div className="flex items-center justify-between gap-2">
-            <div className="text-sm font-medium text-slate-900 dark:text-slate-100">语音输入</div>
+            <div className="text-sm font-medium text-slate-900 dark:text-slate-100">语音</div>
             {isMicOn ? (
-              <Button size="sm" variant="outline" className="gap-2" onClick={() => void stopMic()}>
+              <Button size="sm" variant="outline" className="gap-2 rounded-2xl" onClick={() => void stopMic()}>
                 <MicOff className="h-4 w-4" />
                 停止
               </Button>
             ) : (
-              <Button size="sm" variant="outline" className="gap-2" onClick={startMic} disabled={!speechSupported}>
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-2 rounded-2xl"
+                onClick={startMic}
+              >
                 <Mic className="h-4 w-4" />
                 开始
               </Button>
             )}
           </div>
-          <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-            每 2 分钟自动把新增语音文本发送到后端并按 500 字符分块总结。
-          </div>
           <div className="mt-3">
             <Textarea
               value={(voiceHistory ? `${voiceHistory}\n\n` : '') + (voiceRefined || voiceRaw)}
               readOnly
-              placeholder="语音转文字（已自动修正）会显示在这里。"
-              className="min-h-[140px] resize-none"
+              placeholder="语音文本"
+              className="min-h-[120px] resize-none rounded-2xl border border-slate-200/70 bg-white/60 text-sm shadow-sm dark:border-slate-800/70 dark:bg-slate-950/60"
             />
           </div>
           <div className="mt-2 flex items-center justify-between gap-2">
-            <Button size="sm" variant="outline" onClick={() => void flushVoiceWindow()} disabled={!sessionId}>
-              立即同步
+            <Button
+              size="sm"
+              variant="ghost"
+              className="rounded-2xl"
+              onClick={() => void flushVoiceWindow()}
+              disabled={!sessionId}
+            >
+              同步
             </Button>
-            <div className="text-xs text-slate-500 dark:text-slate-400">
-              未同步字符：{(voiceRefined || voiceRaw).length}
-            </div>
+            <div className="text-xs text-slate-500 dark:text-slate-400">{(voiceRefined || voiceRaw).length}</div>
           </div>
           {voiceError && (
-            <div className="mt-2 rounded-lg border border-rose-200 bg-rose-50 p-2 text-xs text-rose-800 dark:border-rose-800/50 dark:bg-rose-950/40 dark:text-rose-200">
+            <div className="mt-2 rounded-2xl border border-rose-200 bg-rose-50 p-2 text-xs text-rose-800 dark:border-rose-800/50 dark:bg-rose-950/40 dark:text-rose-200">
               {voiceError}
             </div>
           )}
         </div>
 
         {error && (
-          <p className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800 dark:border-amber-800/50 dark:bg-amber-950/40 dark:text-amber-200">
+          <p className="rounded-2xl border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800 dark:border-amber-800/50 dark:bg-amber-950/40 dark:text-amber-200">
             {error}
           </p>
         )}
 
         {status?.error && (
-          <p className="rounded-lg border border-rose-200 bg-rose-50 p-2 text-xs text-rose-800 dark:border-rose-800/50 dark:bg-rose-950/40 dark:text-rose-200">
+          <p className="rounded-2xl border border-rose-200 bg-rose-50 p-2 text-xs text-rose-800 dark:border-rose-800/50 dark:bg-rose-950/40 dark:text-rose-200">
             {status.error}
           </p>
         )}
@@ -701,20 +762,18 @@ export default function DocWorkspace() {
   );
 
   return (
-    <AppShell
-      title="文档分段总结"
-      description="上传文档后，后台会将文档拆分为多段，并逐段生成总结，持续追加到列表中。"
-      active="docs"
-      badges={badges}
-      side={sidePanel}
-    >
-      <div className="grid min-h-0 grid-cols-1 gap-4">
-        <Card className="flex min-h-[320px] max-h-[520px] flex-col overflow-hidden">
+    <AppShell title="PRD 工作台" description="上传 · 语音 · PRD" active="docs" badges={badges} side={sidePanel}>
+      <div className="grid min-h-0 grid-cols-1 gap-6">
+        <Card
+          className={cn(
+            panelClass,
+            'ui-reveal ui-reveal-delay-1 flex min-h-[320px] max-h-[560px] flex-col overflow-hidden'
+          )}
+        >
           <CardHeader className="border-b border-slate-200/70 dark:border-slate-800/70">
-            <CardTitle>PRD（累计）</CardTitle>
-            <CardDescription>每完成一段会更新一次 PRD</CardDescription>
+            <CardTitle className="font-display text-lg">PRD</CardTitle>
           </CardHeader>
-          <CardContent className="flex min-h-0 flex-1 overflow-y-auto">
+          <CardContent className="flex min-h-0 flex-1 overflow-y-auto px-6 pb-6">
             {prd ? (
               <div className={cn('prose max-w-none text-sm dark:text-slate-100')}>
                 <ReactMarkdown
@@ -728,32 +787,34 @@ export default function DocWorkspace() {
                 </ReactMarkdown>
               </div>
             ) : (
-              <div className="text-sm text-slate-500">暂无 PRD</div>
+              <div className="text-sm text-slate-500">暂无</div>
             )}
           </CardContent>
         </Card>
 
-        <Card className="flex min-h-[320px] max-h-[520px] flex-col overflow-hidden">
+        <Card
+          className={cn(
+            panelClass,
+            'ui-reveal ui-reveal-delay-2 flex min-h-[320px] max-h-[560px] flex-col overflow-hidden'
+          )}
+        >
           <CardHeader className="border-b border-slate-200/70 dark:border-slate-800/70">
-            <CardTitle className="flex items-center gap-2">
-              分段总结列表
-              {status?.status === 'running' && <Loader2 className="h-4 w-4 animate-spin text-blue-500" />}
+            <CardTitle className="flex items-center gap-2 font-display text-lg">
+              分段
+              {status?.status === 'running' && <Loader2 className="h-4 w-4 animate-spin text-emerald-500" />}
             </CardTitle>
-            <CardDescription>按段号顺序追加展示</CardDescription>
           </CardHeader>
-          <CardContent className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1">
+          <CardContent className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
             {summaries.length === 0 ? (
-              <div className="text-sm text-slate-500">暂无分段总结</div>
+              <div className="text-sm text-slate-500">暂无</div>
             ) : (
               summaries.map((item) => (
                 <div
                   key={item.filename}
-                  className="w-full min-w-0 rounded-xl border border-slate-200/70 bg-white/70 p-3 text-sm text-slate-700 shadow-sm dark:border-slate-800/70 dark:bg-slate-900/60 dark:text-slate-200"
+                  className="card-surface w-full min-w-0 rounded-2xl p-4 text-sm text-slate-700 dark:text-slate-200"
                 >
                   <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
-                    <span>
-                      {formatDateTime(item.created_at)}
-                    </span>
+                    <span>{formatDateTime(item.created_at)}</span>
                     <span className="font-mono">{item.filename}</span>
                   </div>
                   <div className="prose max-w-none text-sm dark:text-slate-100">
@@ -768,3 +829,5 @@ export default function DocWorkspace() {
     </AppShell>
   );
 }
+
+
